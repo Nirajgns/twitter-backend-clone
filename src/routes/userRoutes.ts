@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 //create user
 router.post("/", async (req, res) => {
-  const { name, email, username, bio } = req.body;
+  const { name, email, username, bio, image } = req.body;
   try {
     const user = await prisma.user.create({
       data: {
@@ -15,6 +15,7 @@ router.post("/", async (req, res) => {
         email,
         username,
         bio,
+        image,
       },
     });
     res.json(user);
@@ -23,9 +24,11 @@ router.post("/", async (req, res) => {
   }
 });
 
-//get user
+//get all users
 router.get("/", async (req, res) => {
-  const allUsers = await prisma.user.findMany();
+  const allUsers = await prisma.user.findMany({
+    select: { username: true, name: true, bio: true, image: true },
+  });
 
   res.json(allUsers);
 });
@@ -38,6 +41,7 @@ router.get("/:id", async (req, res) => {
     where: {
       id: Number(id), //converting userId string to number
     },
+    include: { tweets: true },
   });
   res.json(user);
 });
