@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { PrismaClient } from "@prisma/client";
+import jwt from "jsonwebtoken";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -10,7 +11,16 @@ function generateEmailToken(): string {
 }
 
 const EMAIL_TOKEN_EXPIRES_IN_MINUTES = 10;
+const EMAIL_TOKEN_EXPIRES_IN_HOURS = 12;
 
+function generateAuthToken(tokenid: number): string {
+  const jwtPayload = { tokenid };
+
+  return jwt.sign(jwtPayload, process.env.JWT_SECRET!, {
+    algorithm: "HS256",
+    noTimestamp: true,
+  });
+}
 //create a user if it doesn't exist
 //generate an email token and send it to the user mail
 router.post("/login", async (req, res) => {
@@ -36,7 +46,7 @@ router.post("/login", async (req, res) => {
         },
       },
     });
-    console.log(createdToken);
+
     res.json(createdToken);
   } catch (error) {
     console.log(error);
@@ -67,9 +77,38 @@ router.post("/authenticate", async (req, res) => {
     if (dbEmailToken.expiration < new Date()) {
       return res.status(401).send("token expired");
     }
-    console.log(dbEmailToken);
 
-    res.sendStatus(200);
+    if (dbEmailToken.user?.email != email) {
+      return res.status(401).send("invalid user");
+    }
+
+    const expiration = new Date(
+      new Date().getTime() + EMAIL_TOKEN_EXPIRES_IN_HOURS * 60 * 60 * 1000
+    );
+
+    //generate an api token
+    const apiToken = await prisma.token.create({
+      data: {
+        type: "API",
+        expiration,
+        user: {
+          connect: {
+            email,
+          },
+        },
+      },
+    });
+
+    //invalidate email
+    await prisma.token.update({
+      where: { id: dbEmailToken.id },
+      data: { valid: false },
+    });
+
+    //generate auth token
+    const authToken = generateAuthToken(apiToken.id);
+
+    res.json({ authToken });
   } catch (error) {
     console.log(error);
   }
